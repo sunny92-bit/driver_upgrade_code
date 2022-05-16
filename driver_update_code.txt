@@ -1,0 +1,88 @@
+- hosts: awsvm
+  tasks:
+   - name: INSTALL NECESSARY PACKAGES FOR AMAZON LINUX
+     yum:
+         name: '{{ item }}'
+         state: present
+     loop:
+        - git
+        - kernel-devel-{{ ansible_kernel }}
+        - dkms
+     when: ansible_pkg_mgr == "yum"
+     register: ym
+#   - debug:
+#        var: ym
+   - name: INSTALL NECESSARY PACKAGES FOR UBUNTU
+     apt:
+         name: '{{ item }}'
+         state: present
+         update_cache: yes
+     when: ansible_pkg_mgr == "apt"
+     loop:
+        - git
+        - gcc
+        - make
+        - linux-headers-{{ ansible_kernel }}
+        - dkms
+     register: ap
+   - debug:
+         var: ap
+   - name: Install NECESSARY PACKAGES FOR REDHAT
+     yum:
+         name: '{{ item }}'
+         state: present
+     loop:
+        - gcc
+        - git
+        - kernel-devel-{{ ansible_kernel }}
+
+     when: ansible_distribution == "RedHat"
+   - name: Configure YUM repository and Install DKMS packages for REDHAT
+     command: '{{ item }}'
+     with_items:
+     - yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+     - yum install dkms -y
+     when: ansible_distribution == "RedHat"
+     register: yumrepo
+   - debug:
+        var: yumrepo
+   - name: Configure YUM repository and Install DKMS  packages for CENTOS
+     command: '{{ item }}'
+     with_items:
+     - yum install --enablerepo=extras epel-release
+     - yum install dkms -y
+     when: ansible_os_family == "Centos"
+     register: centosrepo
+   - name: Clone Git repository
+     ansible.builtin.git:
+         repo: https://github.com/amzn/amzn-drivers.git
+         dest: /tmp/driver
+         version: master
+#     when: ap.msg == "All items completed" or ym.msg == "All items completed" or yumrepo.msg == "All items completed" or centosrepo.msg == "All items completed"
+     when: ap.changed == true or ym.changed == true or yumrepo.changed == true or centosrepo.changed == true
+     register: gitclone
+   - debug:
+         var: gitclone
+   - name: Copy the FILE TO /usr/src/amzn-drivers-X.Y.Z
+     command: mv /tmp/driver /usr/src/amzn-drivers-2.7.0
+     when: gitclone.changed == true
+     register: movefile
+   - debug:
+       var: movefile
+#     when: ap.changed == "false" or ym.changed == "false"
+   - name: Copy dkms conf file to amazon driver folder
+     copy:
+         src: /root/awsdriver/dkms.conf
+         dest: /usr/src/amzn-drivers-2.7.0/
+     when: movefile.changed == true
+     register: dkmsfile
+   - debug:
+        var: dkmsfile
+#     when: ap.changed == "false" or ym.changed == "false"
+   - name: FINAL STAGE OF DRIVER INSTALLATION
+     command: '{{ item }}'
+     with_items:
+     - dkms add -m amzn-drivers -v 2.7.0
+     - dkms build -m amzn-drivers -v 2.7.0
+     - dkms install -m amzn-drivers -v 2.7.0
+     when: dkmsfile.changed == true
