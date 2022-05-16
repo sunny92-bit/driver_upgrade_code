@@ -17,7 +17,7 @@
          name: '{{ item }}'
          state: present
          update_cache: yes
-     when: ansible_distribution == "Debian"
+     when: ansible_distribution == "Ubuntu"
      loop:
         - git
         - gcc
